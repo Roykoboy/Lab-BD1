@@ -1,0 +1,55 @@
+CREATE OR REPLACE PROCEDURE generate_supply_report(
+    IN start_date DATE,
+    IN end_date DATE
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Формирование отчета о поставках за определённый период
+    RAISE NOTICE 'Отчет о поставках с % по %:', start_date, end_date;
+
+    RETURN QUERY
+    SELECT contracts.id AS contract_id, 
+           company."company name" AS buyer, 
+           "released product".name AS product, 
+           contracts."purchased products" AS quantity,
+           "released product".cost AS unit_price,
+           contracts.date AS contract_date
+    FROM public."Contracts" AS contracts
+    JOIN public."Company" AS company ON contracts.id_client = company.id_company
+    JOIN public."released product" ON contracts.id_product = "released product".id
+    WHERE contracts.date BETWEEN start_date AND end_date
+    ORDER BY contracts.date;
+END;
+$$;
+
+
+CREATE OR REPLACE PROCEDURE calculate_order_cost(
+    IN product_id BIGINT,
+    IN quantity BIGINT,
+    IN tax_rate DECIMAL,       -- Процент налога,
+    IN discount_rate DECIMAL,  -- Процент скидки,
+    OUT total_cost DECIMAL
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    unit_price DECIMAL;
+BEGIN
+    -- Получаем цену за единицу товара
+    SELECT cost INTO unit_price 
+    FROM public."released product"
+    WHERE id = product_id;
+
+    -- Проверка, была ли найдена цена
+    IF unit_price IS NULL THEN
+        RAISE EXCEPTION 'Товар с id % не найден', product_id;
+    END IF;
+
+    -- Рассчитываем общую стоимость без учёта налогов и скидок
+    total_cost := unit_price * quantity;
+
+    -- Применяем скидку и налог
+    total_cost := total_cost * (1 - discount_rate / 100) * (1 + tax_rate / 100);
+END;
+$$;
